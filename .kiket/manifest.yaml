@@ -1,0 +1,155 @@
+model_version: "1.0"
+extension:
+  id: dev.kiket.ext.email
+  name: Email Notifications
+  version: 1.0.0
+  description: Send email notifications with template support, digest mode, and preference management
+  author: Kiket Team
+  homepage: https://github.com/kiket-dev/kiket-ext-email
+  delivery: http
+  callback:
+    url: ${EXTENSION_BASE_URL}
+    secret: env:KIKET_WEBHOOK_SECRET
+    timeout: 30000
+    required: true
+  activationEvents:
+    - issue.created
+    - issue.transitioned
+    - issue.assigned
+    - issue.commented
+    - workflow.sla_breach
+  permissions:
+    - issues:read
+    - users:read
+    - notifications:write
+  capabilities:
+    - notifications
+    - email
+    - templates
+    - digest-mode
+    - preference-management
+    - rate-limiting
+  hooks:
+    - event: issue.created
+      timeout: 5000
+      retries: 1
+      description: Send email notification when issue is created
+    - event: issue.transitioned
+      timeout: 5000
+      retries: 1
+      description: Send email on issue state transitions
+    - event: issue.assigned
+      timeout: 5000
+      retries: 1
+      description: Notify users when assigned to issues
+    - event: issue.commented
+      timeout: 5000
+      retries: 1
+      description: Send email for new comments
+    - event: workflow.sla_breach
+      timeout: 5000
+      retries: 2
+      description: Send urgent email alerts for SLA violations
+  contributes:
+    commands:
+      - command: email.send
+        title: Send Email
+        description: Send an email notification to a user
+        category: Notifications
+        icon: bi-envelope
+        keywords: ["email", "send", "notify"]
+        handler:
+          type: extension_event
+          event: email.send
+      - command: email.sendDigest
+        title: Send Email Digest
+        description: Send pending digest emails to all users
+        category: Notifications
+        icon: bi-inbox
+        keywords: ["email", "digest", "batch"]
+        handler:
+          type: extension_event
+          event: email.sendDigest
+      - command: email.managePreferences
+        title: Manage Email Preferences
+        description: View and update email notification preferences
+        category: Settings
+        icon: bi-gear
+        keywords: ["email", "preferences", "settings", "opt-out"]
+        handler:
+          type: extension_event
+          event: email.managePreferences
+      - command: email.validateTemplate
+        title: Validate Email Template
+        description: Test email template syntax with sample data
+        category: Settings
+        icon: bi-check2-square
+        keywords: ["email", "template", "validate", "test"]
+        handler:
+          type: extension_event
+          event: email.validateTemplate
+  configuration:
+    SMTP_HOST:
+      type: string
+      secret: true
+      description: SMTP server hostname
+    SMTP_PORT:
+      type: integer
+      default: "587"
+      description: SMTP server port
+    SMTP_USERNAME:
+      type: string
+      secret: true
+      description: SMTP authentication username
+    SMTP_PASSWORD:
+      type: string
+      secret: true
+      description: SMTP authentication password
+    SMTP_AUTH:
+      type: string
+      default: "plain"
+      description: SMTP authentication method (plain, login, cram_md5)
+    SMTP_TLS:
+      type: boolean
+      default: "true"
+      description: Enable STARTTLS for SMTP connection
+    SMTP_DOMAIN:
+      type: string
+      default: "kiket.dev"
+      description: SMTP HELO domain
+    EMAIL_FROM:
+      type: string
+      default: "notifications@kiket.dev"
+      description: Default FROM email address
+    RATE_LIMIT_PER_MINUTE:
+      type: integer
+      default: "20"
+      description: Maximum emails per minute
+    ENABLE_SUPPRESSION:
+      type: boolean
+      default: "true"
+      description: Honor user opt-out preferences
+  assets:
+    icon: ./public/icon.svg
+
+deployment:
+  runtime: cloud_run
+  region: ${KIKET_REGION:-europe-west1}
+  image: ${EMAIL_IMAGE:-europe-west1-docker.pkg.dev/kiket-471917/kiket-extensions/kiket-ext-email:latest}
+  resources:
+    cpu: "1"
+    memory: "512Mi"
+    concurrency: 10
+  min_instances: 0
+  max_instances: 10
+  vpc:
+    connector: ${KIKET_VPC_CONNECTOR}
+    egress: all-traffic
+  secret_keys:
+    - KIKET_WEBHOOK_SECRET
+    - SMTP_HOST
+    - SMTP_USERNAME
+    - SMTP_PASSWORD
+  env:
+    RACK_ENV: production
+    PORT: "9393"
