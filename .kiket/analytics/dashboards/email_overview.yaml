@@ -1,0 +1,74 @@
+name: "Email Delivery Overview"
+description: "Email delivery metrics and template performance"
+refresh_interval: 300
+
+sections:
+  - name: "Summary Metrics"
+    layout: "grid"
+    columns: 4
+    widgets:
+      - type: "metric"
+        title: "Total Sent (30d)"
+        query: "SELECT SUM(total_sent) as value FROM email_metrics_daily WHERE delivery_date >= CURRENT_DATE - INTERVAL '30 days'"
+        icon: "mail"
+
+      - type: "metric"
+        title: "Delivery Rate"
+        query: "SELECT ROUND(AVG(delivery_rate_pct), 1) || '%' as value FROM email_metrics_daily WHERE delivery_date >= CURRENT_DATE - INTERVAL '30 days'"
+        icon: "check-circle"
+
+      - type: "metric"
+        title: "Open Rate"
+        query: "SELECT ROUND(AVG(open_rate_pct), 1) || '%' as value FROM email_metrics_daily WHERE delivery_date >= CURRENT_DATE - INTERVAL '30 days'"
+        icon: "eye"
+
+      - type: "metric"
+        title: "Bounce Rate"
+        query: "SELECT ROUND(AVG(bounce_rate_pct), 1) || '%' as value FROM email_metrics_daily WHERE delivery_date >= CURRENT_DATE - INTERVAL '30 days'"
+        icon: "alert-circle"
+
+  - name: "Delivery Trends"
+    layout: "full-width"
+    widgets:
+      - type: "line-chart"
+        title: "Daily Email Volume"
+        query: |
+          SELECT
+            delivery_date as date,
+            SUM(total_sent) as "Sent",
+            SUM(delivered_count) as "Delivered",
+            SUM(bounced_count) as "Bounced"
+          FROM email_metrics_daily
+          WHERE delivery_date >= CURRENT_DATE - INTERVAL '30 days'
+          GROUP BY delivery_date
+          ORDER BY delivery_date
+        x_axis: "date"
+        y_axis: ["Sent", "Delivered", "Bounced"]
+
+  - name: "Template Performance"
+    layout: "full-width"
+    widgets:
+      - type: "table"
+        title: "Template Metrics"
+        query: |
+          SELECT
+            template_name as "Template",
+            total_sent as "Sent",
+            delivery_rate_pct as "Delivery %",
+            open_rate_pct as "Open %",
+            click_through_rate_pct as "CTR %",
+            bounce_rate_pct as "Bounce %"
+          FROM email_template_performance
+          ORDER BY total_sent DESC
+        page_size: 20
+
+filters:
+  - name: "template"
+    label: "Template"
+    type: "select"
+    query: "SELECT DISTINCT template_name as value, template_name as label FROM email_deliveries.deliveries WHERE template_name IS NOT NULL ORDER BY template_name"
+
+  - name: "date_range"
+    label: "Date Range"
+    type: "date-range"
+    default: "last_30_days"

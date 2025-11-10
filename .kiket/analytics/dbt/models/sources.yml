@@ -1,0 +1,8 @@
+version: 2
+
+sources:
+  - name: email_deliveries
+    description: "Email delivery tracking data"
+    tables:
+      - name: deliveries
+        description: "Email delivery records"

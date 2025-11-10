@@ -1,0 +1,84 @@
+module: email_deliveries
+version: "1.0"
+description: "Email delivery tracking and analytics"
+
+tables:
+  deliveries:
+    columns:
+      - name: id
+        type: bigint
+        primary_key: true
+        auto_increment: true
+      - name: message_id
+        type: string
+        length: 255
+        unique: true
+      - name: recipient
+        type: string
+        length: 255
+        null: false
+      - name: subject
+        type: text
+      - name: template_name
+        type: string
+        length: 100
+      - name: delivery_type
+        type: string
+        length: 50
+        null: false
+      - name: status
+        type: string
+        length: 50
+        null: false
+      - name: sent_at
+        type: timestamp
+      - name: delivered_at
+        type: timestamp
+      - name: opened_at
+        type: timestamp
+      - name: clicked_at
+        type: timestamp
+      - name: bounced_at
+        type: timestamp
+      - name: failed_at
+        type: timestamp
+      - name: error_message
+        type: text
+      - name: project_id
+        type: string
+      - name: issue_id
+        type: string
+      - name: created_at
+        type: timestamp
+        null: false
+    indexes:
+      - name: idx_email_deliveries_status
+        columns: [status]
+      - name: idx_email_deliveries_sent
+        columns: [sent_at]
+      - name: idx_email_deliveries_project
+        columns: [project_id]
+      - name: idx_email_deliveries_template
+        columns: [template_name]
+
+permissions:
+  - role: user
+    tables:
+      deliveries:
+        - read
+    conditions:
+      - "project_id IN (user.accessible_projects)"
+
+  - role: manager
+    tables:
+      deliveries:
+        - read
+    conditions:
+      - "project_id IN (user.managed_projects)"
+
+  - role: admin
+    tables:
+      deliveries:
+        - read
+        - write
+        - delete

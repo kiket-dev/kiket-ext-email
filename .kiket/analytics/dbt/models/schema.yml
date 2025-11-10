@@ -1,0 +1,31 @@
+version: 2
+
+models:
+  - name: email_metrics_daily
+    description: "Daily email delivery metrics by template"
+    columns:
+      - name: delivery_date
+      - name: template_name
+      - name: delivery_type
+      - name: total_sent
+      - name: delivered_count
+      - name: bounced_count
+      - name: failed_count
+      - name: opened_count
+      - name: clicked_count
+      - name: delivery_rate_pct
+      - name: bounce_rate_pct
+      - name: open_rate_pct
+      - name: click_through_rate_pct
+
+  - name: email_template_performance
+    description: "Template performance metrics"
+    columns:
+      - name: template_name
+      - name: total_sent
+      - name: delivered
+      - name: opened
+      - name: clicked
+      - name: delivery_rate_pct
+      - name: open_rate_pct
+      - name: click_through_rate_pct
