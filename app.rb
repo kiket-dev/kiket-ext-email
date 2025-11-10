@@ -18,12 +18,14 @@ class EmailNotificationExtension < Sinatra::Base
     set :logging, true
     set :logger, Logger.new($stdout)
 
+    base_domain = ENV.fetch("KIKET_BASE_DOMAIN", "kiket.dev")
+
     # Configure Mail gem for SMTP
     Mail.defaults do
       delivery_method :smtp, {
         address: ENV.fetch("SMTP_HOST", "smtp.gmail.com"),
         port: ENV.fetch("SMTP_PORT", "587").to_i,
-        domain: ENV.fetch("SMTP_DOMAIN", "kiket.dev"),
+        domain: ENV.fetch("SMTP_DOMAIN", base_domain),
         user_name: ENV["SMTP_USERNAME"],
         password: ENV["SMTP_PASSWORD"],
         authentication: ENV.fetch("SMTP_AUTH", "plain").to_sym,
@@ -472,6 +474,7 @@ class EmailNotificationExtension < Sinatra::Base
   end
 
   def default_from_address
-    ENV.fetch("EMAIL_FROM", "notifications@kiket.dev")
+    base_domain = ENV.fetch("KIKET_BASE_DOMAIN", "kiket.dev")
+    ENV.fetch("EMAIL_FROM", "notifications@#{base_domain}")
   end
 end

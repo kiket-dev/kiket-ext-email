@@ -56,8 +56,8 @@ The extension will be available at `http://localhost:9393`
 - `SMTP_PORT`: SMTP server port (default: 587)
 - `SMTP_AUTH`: Authentication method - plain, login, cram_md5 (default: plain)
 - `SMTP_TLS`: Enable STARTTLS (default: true)
-- `SMTP_DOMAIN`: HELO domain (default: kiket.dev)
-- `EMAIL_FROM`: Default FROM address (default: notifications@kiket.dev)
+- `SMTP_DOMAIN`: HELO domain (default: value of `KIKET_BASE_DOMAIN`)
+- `EMAIL_FROM`: Default FROM address (default: `notifications@${KIKET_BASE_DOMAIN}`)
 - `RATE_LIMIT_PER_MINUTE`: Maximum emails per minute (default: 20)
 - `ENABLE_SUPPRESSION`: Honor user opt-out preferences (default: true)
 
