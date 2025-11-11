@@ -385,10 +385,10 @@ class EmailNotificationExtension < Sinatra::Base
       subject = subject_template.render(context.transform_keys(&:to_s))
       body = body_template.render(context.transform_keys(&:to_s))
 
-      [subject, body]
+      [ subject, body ]
     else
       # Use raw subject and body
-      [request_body[:subject], request_body[:body]]
+      [ request_body[:subject], request_body[:body] ]
     end
   end
 

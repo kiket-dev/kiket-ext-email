@@ -37,7 +37,7 @@ RSpec.describe EmailNotificationExtension do
         # Check email was sent
         expect(Mail::TestMailer.deliveries.length).to eq(1)
         email = Mail::TestMailer.deliveries.first
-        expect(email.to).to eq(["user@example.com"])
+        expect(email.to).to eq([ "user@example.com" ])
         expect(email.subject).to eq("Test Subject")
         expect(email.body.to_s).to eq("Test Body")
       end
@@ -54,8 +54,8 @@ RSpec.describe EmailNotificationExtension do
         expect(last_response).to be_ok
 
         email = Mail::TestMailer.deliveries.first
-        expect(email.cc).to eq(["cc@example.com"])
-        expect(email.bcc).to eq(["bcc@example.com"])
+        expect(email.cc).to eq([ "cc@example.com" ])
+        expect(email.bcc).to eq([ "bcc@example.com" ])
       end
     end
 
