@@ -31,6 +31,7 @@ extension:
     - rate-limiting
   hooks:
     - event: issue.created
+      template: issue_created_template
       timeout: 5000
       retries: 1
       description: Send email notification when issue is created
@@ -39,6 +40,7 @@ extension:
       retries: 1
       description: Send email on issue state transitions
     - event: issue.assigned
+      template: issue_assigned_template
       timeout: 5000
       retries: 1
       description: Notify users when assigned to issues
@@ -47,6 +49,7 @@ extension:
       retries: 1
       description: Send email for new comments
     - event: workflow.sla_breach
+      template: sla_breach_template
       timeout: 5000
       retries: 2
       description: Send urgent email alerts for SLA violations
@@ -89,6 +92,7 @@ extension:
           type: extension_event
           event: email.validateTemplate
   configuration:
+    # SMTP Settings
     SMTP_HOST:
       type: string
       secret: true
@@ -129,6 +133,119 @@ extension:
       type: boolean
       default: "true"
       description: Honor user opt-out preferences
+    # Rich Configuration - Email Templates
+    issue_created_template:
+      type: template
+      editor: template
+      language: liquid
+      label: Issue Created Email Template
+      description: Email template sent when a new issue is created
+      default: |
+        <h2>New Issue: {{ issue.title }}</h2>
+        <p>Hi {{ user.name }},</p>
+        <p>A new issue has been created in <strong>{{ project.name }}</strong>.</p>
+        <table style="width:100%; border-collapse: collapse;">
+          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Issue</strong></td><td style="padding: 8px; border: 1px solid #ddd;">{{ issue.title }}</td></tr>
+          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Type</strong></td><td style="padding: 8px; border: 1px solid #ddd;">{{ issue.type }}</td></tr>
+          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Priority</strong></td><td style="padding: 8px; border: 1px solid #ddd;">{{ issue.priority }}</td></tr>
+          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Created by</strong></td><td style="padding: 8px; border: 1px solid #ddd;">{{ issue.created_by.name }}</td></tr>
+        </table>
+        <p><a href="{{ issue.url }}" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px;">View Issue</a></p>
+      variables:
+        - name: issue
+          type: object
+          properties:
+            - { name: id, type: number }
+            - { name: title, type: string }
+            - { name: type, type: string }
+            - { name: priority, type: string }
+            - { name: url, type: string }
+            - { name: created_by, type: object }
+        - name: user
+          type: object
+          properties:
+            - { name: name, type: string }
+            - { name: email, type: string }
+        - name: project
+          type: object
+          properties:
+            - { name: name, type: string }
+      validation:
+        max_length: 50000
+    issue_assigned_template:
+      type: template
+      editor: template
+      language: liquid
+      label: Issue Assigned Email Template
+      description: Email template sent when an issue is assigned
+      default: |
+        <h2>Issue Assigned: {{ issue.title }}</h2>
+        <p>Hi {{ assignee.name }},</p>
+        <p>You have been assigned to an issue in <strong>{{ project.name }}</strong>.</p>
+        <p><strong>{{ issue.title }}</strong></p>
+        <p>{{ issue.description | truncate: 200 }}</p>
+        <p><a href="{{ issue.url }}">View Issue →</a></p>
+      variables:
+        - name: issue
+          type: object
+          properties:
+            - { name: id, type: number }
+            - { name: title, type: string }
+            - { name: description, type: string }
+            - { name: url, type: string }
+        - name: assignee
+          type: object
+          properties:
+            - { name: name, type: string }
+            - { name: email, type: string }
+        - name: project
+          type: object
+          properties:
+            - { name: name, type: string }
+    sla_breach_template:
+      type: template
+      editor: template
+      language: liquid
+      label: SLA Breach Alert Template
+      description: Urgent email template for SLA violations
+      default: |
+        <div style="border-left: 4px solid #dc3545; padding-left: 16px;">
+          <h2 style="color: #dc3545;">⚠️ SLA Breach Alert</h2>
+          <p><strong>Issue:</strong> {{ issue.title }}</p>
+          <p><strong>SLA Policy:</strong> {{ sla.policy_name }}</p>
+          <p><strong>Target:</strong> {{ sla.target_time }}</p>
+          <p><strong>Actual:</strong> {{ sla.actual_time }}</p>
+          <p><strong>Exceeded by:</strong> {{ sla.exceeded_by }}</p>
+          <p><a href="{{ issue.url }}" style="background-color: #dc3545; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px;">Take Action Now</a></p>
+        </div>
+      variables:
+        - name: issue
+          type: object
+          properties:
+            - { name: id, type: number }
+            - { name: title, type: string }
+            - { name: url, type: string }
+        - name: sla
+          type: object
+          properties:
+            - { name: policy_name, type: string }
+            - { name: target_time, type: string }
+            - { name: actual_time, type: string }
+            - { name: exceeded_by, type: string }
+      validation:
+        max_length: 50000
+        required_variables:
+          - issue.title
+          - sla.policy_name
+    email_signature:
+      type: html
+      editor: html
+      label: Email Signature
+      description: HTML signature appended to all outgoing emails
+      default: |
+        <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee; color: #666; font-size: 12px;">
+          <p>Sent via Kiket · <a href="{{ unsubscribe_url }}">Manage preferences</a></p>
+        </div>
   assets:
     icon: ./public/icon.svg
 
