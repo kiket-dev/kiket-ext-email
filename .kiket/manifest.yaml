@@ -96,6 +96,8 @@ extension:
     SMTP_HOST:
       type: string
       secret: true
+      required: true
+      label: SMTP Host
       description: SMTP server hostname
     SMTP_PORT:
       type: integer
@@ -104,10 +106,14 @@ extension:
     SMTP_USERNAME:
       type: string
       secret: true
+      required: true
+      label: SMTP Username
       description: SMTP authentication username
     SMTP_PASSWORD:
       type: string
       secret: true
+      required: true
+      label: SMTP Password
       description: SMTP authentication password
     SMTP_AUTH:
       type: string
