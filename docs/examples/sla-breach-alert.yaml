@@ -1,0 +1,17 @@
+title: SLA Breach Email Alert
+description: Send urgent emails when SLA policies are breached
+
+automations:
+  - name: sla_breach_email
+    trigger:
+      event: workflow.sla_breach
+    actions:
+      - extension: dev.kiket.ext.email
+        command: email.send
+        params:
+          to:
+            - "{{ issue.assignee.email }}"
+            - "{{ project.lead.email }}"
+          subject: "[SLA BREACH] {{ issue.title }} - Action Required"
+          template: sla_breach_template
+          priority: high

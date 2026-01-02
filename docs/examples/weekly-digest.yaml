@@ -1,0 +1,17 @@
+title: Weekly Status Digest
+description: Send weekly summary emails to team members
+
+schedules:
+  - name: weekly_digest
+    cron: "0 9 * * 1"  # Every Monday at 9 AM
+    timezone: "Europe/Amsterdam"
+    action:
+      extension: dev.kiket.ext.email
+      command: email.sendDigest
+      params:
+        period: weekly
+        include:
+          - created_issues
+          - completed_issues
+          - pending_reviews
+          - upcoming_deadlines

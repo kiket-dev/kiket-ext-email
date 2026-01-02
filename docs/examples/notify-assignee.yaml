@@ -1,0 +1,14 @@
+title: Notify Assignee on Assignment
+description: Send an email when someone is assigned to an issue
+
+automations:
+  - name: email_on_assignment
+    trigger:
+      event: issue.assigned
+    actions:
+      - extension: dev.kiket.ext.email
+        command: email.send
+        params:
+          to: "{{ assignee.email }}"
+          subject: "You've been assigned: {{ issue.title }}"
+          template: issue_assigned_template
