@@ -254,25 +254,4 @@ extension:
         </div>
   assets:
     icon: ./public/icon.svg
-
-deployment:
-  runtime: cloud_run
-  region: ${KIKET_REGION:-europe-west1}
-  image: ${EMAIL_IMAGE:-europe-west1-docker.pkg.dev/kiket-471917/kiket-extensions/kiket-ext-email:latest}
-  resources:
-    cpu: "1"
-    memory: "512Mi"
-    concurrency: 10
-  min_instances: 0
-  max_instances: 10
-  vpc:
-    connector: ${KIKET_VPC_CONNECTOR}
-    egress: all-traffic
-  secret_keys:
-    - KIKET_WEBHOOK_SECRET
-    - SMTP_HOST
-    - SMTP_USERNAME
-    - SMTP_PASSWORD
-  env:
-    RACK_ENV: production
-    PORT: "9393"
+  hosting: internal
