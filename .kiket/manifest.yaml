@@ -9,7 +9,7 @@ extension:
   delivery: http
   callback:
     url: ${EXTENSION_BASE_URL}
-    secret: env:KIKET_WEBHOOK_SECRET
+    secret: env.KIKET_WEBHOOK_SECRET
     timeout: 30000
     required: true
   activationEvents:
@@ -252,6 +252,10 @@ extension:
         <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee; color: #666; font-size: 12px;">
           <p>Sent via Kiket · <a href="{{ unsubscribe_url }}">Manage preferences</a></p>
         </div>
+  custom_data:
+    permissions:
+      - module: dev.kiket.ext.email.deliveries
+        operations: [read, write]
   assets:
     icon: ./public/icon.svg
   hosting: internal

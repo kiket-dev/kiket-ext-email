@@ -1,4 +1,4 @@
-module: email_deliveries
+module: dev.kiket.ext.email.deliveries
 version: "1.0"
 description: "Email delivery tracking and analytics"
 
