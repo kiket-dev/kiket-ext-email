@@ -92,44 +92,52 @@ extension:
           type: extension_event
           event: email.validateTemplate
   configuration:
-    # SMTP Settings
+    # SMTP Settings - org-wide credentials (shared across all projects)
     SMTP_HOST:
       type: string
       secret: true
       required: true
+      scope: extension
       label: SMTP Host
       description: SMTP server hostname
     SMTP_PORT:
       type: integer
       default: "587"
+      scope: extension
       description: SMTP server port
     SMTP_USERNAME:
       type: string
       secret: true
       required: true
+      scope: extension
       label: SMTP Username
       description: SMTP authentication username
     SMTP_PASSWORD:
       type: string
       secret: true
       required: true
+      scope: extension
       label: SMTP Password
       description: SMTP authentication password
     SMTP_AUTH:
       type: string
       default: "plain"
+      scope: extension
       description: SMTP authentication method (plain, login, cram_md5)
     SMTP_TLS:
       type: boolean
       default: "true"
+      scope: extension
       description: Enable STARTTLS for SMTP connection
     SMTP_DOMAIN:
       type: string
       default: "kiket.dev"
+      scope: extension
       description: SMTP HELO domain
     EMAIL_FROM:
       type: string
       default: "notifications@kiket.dev"
+      scope: extension
       description: Default FROM email address
     RATE_LIMIT_PER_MINUTE:
       type: integer
