@@ -1,5 +1,6 @@
 model_version: "1.0"
 extension:
+  sdk: ruby
   id: dev.kiket.ext.email
   name: Email Notifications
   version: 1.0.0
