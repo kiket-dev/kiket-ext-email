@@ -1,26 +1,41 @@
 # frozen_string_literal: true
 
-require "sinatra/base"
-require "json"
+require "kiket_sdk"
 require "mail"
 require "liquid"
 require "logger"
 
 # Email Notification Extension
-# Handles sending email notifications with template support
-class EmailNotificationExtension < Sinatra::Base
+# Handles sending email notifications with template support using Kiket SDK
+class EmailNotificationExtension
   # Custom error classes
   class ValidationError < StandardError; end
   class TemplateError < StandardError; end
   class RateLimitError < StandardError; end
 
-  configure do
-    set :logging, true
-    set :logger, Logger.new($stdout)
+  REQUIRED_SEND_SCOPES = %w[notifications:send].freeze
+  REQUIRED_PREFERENCES_SCOPES = %w[users:read].freeze
 
+  def initialize
+    @sdk = KiketSDK.new
+    @logger = Logger.new($stdout)
+    @email_preferences = {}
+    @digest_queue = {}
+    @rate_limit_state = { count: 0, reset_at: Time.now + 60 }
+
+    configure_mail
+    setup_handlers
+  end
+
+  def app
+    @sdk
+  end
+
+  private
+
+  def configure_mail
     base_domain = ENV.fetch("KIKET_BASE_DOMAIN", "kiket.dev")
 
-    # Configure Mail gem for SMTP
     Mail.defaults do
       delivery_method :smtp, {
         address: ENV.fetch("SMTP_HOST", "smtp.gmail.com"),
@@ -32,18 +47,357 @@ class EmailNotificationExtension < Sinatra::Base
         enable_starttls_auto: ENV.fetch("SMTP_TLS", "true") == "true"
       }
     end
+  end
 
-    # Email preferences storage (in-memory for now)
-    set :email_preferences, {}
+  def setup_handlers
+    # Send email notification
+    @sdk.register("email.send", version: "v1", required_scopes: REQUIRED_SEND_SCOPES) do |payload, context|
+      handle_send_email(payload, context)
+    end
 
-    # Digest queue for batching emails
-    set :digest_queue, {}
+    # Queue email for digest delivery
+    @sdk.register("email.digest.queue", version: "v1", required_scopes: REQUIRED_SEND_SCOPES) do |payload, context|
+      handle_digest_queue(payload, context)
+    end
 
-    # Rate limiting state
-    set :rate_limit_state, { count: 0, reset_at: Time.now + 60 }
+    # Send digest emails
+    @sdk.register("email.digest.send", version: "v1", required_scopes: REQUIRED_SEND_SCOPES) do |payload, context|
+      handle_digest_send(payload, context)
+    end
 
-    # Default templates
-    set :default_templates, {
+    # Update email preferences
+    @sdk.register("email.preferences.update", version: "v1", required_scopes: REQUIRED_PREFERENCES_SCOPES) do |payload, context|
+      handle_preferences_update(payload, context)
+    end
+
+    # Check email preferences
+    @sdk.register("email.preferences.check", version: "v1", required_scopes: REQUIRED_PREFERENCES_SCOPES) do |payload, context|
+      handle_preferences_check(payload, context)
+    end
+
+    # Validate email template
+    @sdk.register("email.template.validate", version: "v1", required_scopes: []) do |payload, context|
+      handle_template_validate(payload, context)
+    end
+  end
+
+  def handle_send_email(payload, context)
+    # Validate required fields
+    validate_email_request!(payload)
+
+    # Check rate limiting
+    check_rate_limit!
+
+    # Get SMTP credentials from secrets (per-org or ENV fallback)
+    smtp_username = context[:secret].call("SMTP_USERNAME")
+    smtp_password = context[:secret].call("SMTP_PASSWORD")
+
+    # Check email preferences
+    if suppression_enabled? && is_suppressed?(payload["to"])
+      @logger.info "Email suppressed for #{payload['to']} per user preferences"
+      return {
+        success: true,
+        suppressed: true,
+        to: payload["to"],
+        reason: "User has opted out of email notifications"
+      }
+    end
+
+    # Render template if provided
+    subject, body = render_email(payload)
+
+    # Send email
+    send_email(
+      to: payload["to"],
+      subject: subject,
+      body: body,
+      from: payload["from"] || default_from_address,
+      cc: payload["cc"],
+      bcc: payload["bcc"],
+      reply_to: payload["reply_to"],
+      smtp_username: smtp_username,
+      smtp_password: smtp_password
+    )
+
+    # Increment rate limit counter
+    increment_rate_limit!
+
+    # Log telemetry event
+    context[:endpoints].log_event("email.sent", {
+      to: payload["to"],
+      subject: subject,
+      org_id: context[:auth][:org_id]
+    })
+
+    {
+      success: true,
+      to: payload["to"],
+      subject: subject,
+      sent_at: Time.now.utc.iso8601
+    }
+  rescue ValidationError, TemplateError, RateLimitError => e
+    @logger.error "Error: #{e.message}"
+    { success: false, error: e.message }
+  rescue StandardError => e
+    @logger.error "SMTP error: #{e.message}"
+    @logger.error e.backtrace.join("\n")
+    { success: false, error: "Email delivery error: #{e.message}" }
+  end
+
+  def handle_digest_queue(payload, context)
+    validate_email_request!(payload)
+
+    recipient = payload["to"]
+    @digest_queue[recipient] ||= []
+    @digest_queue[recipient] << {
+      template: payload["template"],
+      context: payload["context"],
+      queued_at: Time.now.utc
+    }
+
+    {
+      success: true,
+      to: recipient,
+      queued_count: @digest_queue[recipient].length,
+      queued_at: Time.now.utc.iso8601
+    }
+  rescue ValidationError => e
+    { success: false, error: e.message }
+  end
+
+  def handle_digest_send(payload, context)
+    sent_digests = []
+
+    @digest_queue.each do |recipient, emails|
+      next if emails.empty?
+
+      subject = "Kiket Digest - #{emails.length} updates"
+      body = render_digest(emails)
+
+      send_email(
+        to: recipient,
+        subject: subject,
+        body: body,
+        from: default_from_address
+      )
+
+      sent_digests << {
+        to: recipient,
+        count: emails.length
+      }
+    end
+
+    @digest_queue.clear
+
+    context[:endpoints].log_event("email.digest.sent", {
+      count: sent_digests.length,
+      org_id: context[:auth][:org_id]
+    })
+
+    {
+      success: true,
+      digests_sent: sent_digests.length,
+      sent_at: Time.now.utc.iso8601,
+      digests: sent_digests
+    }
+  rescue StandardError => e
+    @logger.error "Digest send error: #{e.message}"
+    { success: false, error: e.message }
+  end
+
+  def handle_preferences_update(payload, context)
+    raise ValidationError, "Email address is required" unless payload["email"]
+
+    email = payload["email"].downcase.strip
+    @email_preferences[email] = {
+      suppressed: payload["suppressed"] || false,
+      digest_only: payload["digest_only"] || false,
+      frequency: payload["frequency"] || "realtime",
+      updated_at: Time.now.utc
+    }
+
+    {
+      success: true,
+      email: email,
+      preferences: @email_preferences[email],
+      updated_at: Time.now.utc.iso8601
+    }
+  rescue ValidationError => e
+    { success: false, error: e.message }
+  end
+
+  def handle_preferences_check(payload, context)
+    raise ValidationError, "Email address is required" unless payload["email"]
+
+    email = payload["email"].downcase.strip
+    preferences = @email_preferences[email] || default_preferences
+
+    {
+      success: true,
+      email: email,
+      preferences: preferences
+    }
+  rescue ValidationError => e
+    { success: false, error: e.message }
+  end
+
+  def handle_template_validate(payload, context)
+    raise ValidationError, "Template body is required" unless payload["template"]
+
+    Liquid::Template.parse(payload["template"])
+
+    {
+      success: true,
+      valid: true,
+      message: "Template syntax is valid"
+    }
+  rescue Liquid::SyntaxError => e
+    {
+      success: false,
+      valid: false,
+      error: "Invalid template syntax: #{e.message}"
+    }
+  rescue ValidationError => e
+    { success: false, error: e.message }
+  end
+
+  # Helper methods
+
+  def validate_email_request!(payload)
+    raise ValidationError, "Recipient (to) is required" unless payload["to"]
+    raise ValidationError, "Invalid email address" unless valid_email?(payload["to"])
+
+    if payload["template"].nil? && payload["subject"].nil?
+      raise ValidationError, "Either template or subject is required"
+    end
+
+    if payload["template"].nil? && payload["body"].nil?
+      raise ValidationError, "Either template or body is required"
+    end
+  end
+
+  def valid_email?(email)
+    email.to_s.match?(/\A[^@\s]+@[^@\s]+\.[^@\s]+\z/)
+  end
+
+  def render_email(payload)
+    if payload["template"]
+      template_name = payload["template"].to_sym
+      template = default_templates[template_name]
+
+      raise TemplateError, "Template '#{template_name}' not found" unless template
+
+      template_context = payload["context"] || {}
+
+      subject_template = Liquid::Template.parse(template[:subject])
+      body_template = Liquid::Template.parse(template[:body])
+
+      subject = subject_template.render(stringify_keys(template_context))
+      body = body_template.render(stringify_keys(template_context))
+
+      [subject, body]
+    else
+      [payload["subject"], payload["body"]]
+    end
+  end
+
+  def stringify_keys(hash)
+    hash.transform_keys(&:to_s)
+  end
+
+  def render_digest(emails)
+    digest_template = <<~TEMPLATE
+      You have {{ count }} updates:
+
+      {% for email in emails %}
+      ---
+      {{ email.rendered_body }}
+
+      {% endfor %}
+
+      ---
+      To change your email preferences, visit your settings.
+    TEMPLATE
+
+    template = Liquid::Template.parse(digest_template)
+    template.render({
+      "count" => emails.length,
+      "emails" => emails.map { |e|
+        _, body = render_email("template" => e[:template], "context" => e[:context])
+        { "rendered_body" => body }
+      }
+    })
+  end
+
+  def send_email(to:, subject:, body:, from:, cc: nil, bcc: nil, reply_to: nil, smtp_username: nil, smtp_password: nil)
+    mail = Mail.new do
+      to to
+      from from
+      subject subject
+      body body
+      cc cc if cc
+      bcc bcc if bcc
+      reply_to reply_to if reply_to
+    end
+
+    # Configure delivery settings if custom credentials provided
+    if smtp_username && smtp_password
+      mail.delivery_method :smtp, {
+        address: ENV.fetch("SMTP_HOST", "smtp.gmail.com"),
+        port: ENV.fetch("SMTP_PORT", "587").to_i,
+        user_name: smtp_username,
+        password: smtp_password,
+        authentication: ENV.fetch("SMTP_AUTH", "plain").to_sym,
+        enable_starttls_auto: ENV.fetch("SMTP_TLS", "true") == "true"
+      }
+    end
+
+    mail.deliver!
+    @logger.info "Email sent to #{to}: #{subject}"
+  end
+
+  def check_rate_limit!
+    if Time.now >= @rate_limit_state[:reset_at]
+      @rate_limit_state[:count] = 0
+      @rate_limit_state[:reset_at] = Time.now + 60
+    end
+
+    max_per_minute = ENV.fetch("RATE_LIMIT_PER_MINUTE", "20").to_i
+
+    if @rate_limit_state[:count] >= max_per_minute
+      raise RateLimitError, "Rate limit exceeded (#{max_per_minute}/min)"
+    end
+  end
+
+  def increment_rate_limit!
+    @rate_limit_state[:count] += 1
+  end
+
+  def suppression_enabled?
+    ENV.fetch("ENABLE_SUPPRESSION", "true") == "true"
+  end
+
+  def is_suppressed?(email)
+    email = email.downcase.strip
+    prefs = @email_preferences[email]
+    prefs && prefs[:suppressed]
+  end
+
+  def default_preferences
+    {
+      suppressed: false,
+      digest_only: false,
+      frequency: "realtime"
+    }
+  end
+
+  def default_from_address
+    base_domain = ENV.fetch("KIKET_BASE_DOMAIN", "kiket.dev")
+    ENV.fetch("EMAIL_FROM", "notifications@#{base_domain}")
+  end
+
+  def default_templates
+    {
       issue_created: {
         subject: "New issue: {{ issue.title }}",
         body: <<~TEMPLATE
@@ -88,7 +442,7 @@ class EmailNotificationExtension < Sinatra::Base
         TEMPLATE
       },
       sla_breach: {
-        subject: "🚨 SLA BREACH: {{ issue.title }}",
+        subject: "SLA BREACH: {{ issue.title }}",
         body: <<~TEMPLATE
           **URGENT: SLA BREACH**
 
@@ -103,378 +457,16 @@ class EmailNotificationExtension < Sinatra::Base
       }
     }
   end
-
-  # Health check endpoint
-  get "/health" do
-    content_type :json
-    {
-      status: "healthy",
-      service: "email-notifications",
-      version: "1.0.0",
-      timestamp: Time.now.utc.iso8601,
-      smtp_configured: smtp_configured?
-    }.to_json
-  end
-
-  # Send email notification
-  post "/send" do
-    content_type :json
-
-    begin
-      request_body = JSON.parse(request.body.read, symbolize_names: true)
-
-      # Validate required fields
-      validate_email_request!(request_body)
-
-      # Check rate limiting
-      check_rate_limit!
-
-      # Check email preferences
-      if suppression_enabled? && is_suppressed?(request_body[:to])
-        logger.info "Email suppressed for #{request_body[:to]} per user preferences"
-        status 200
-        return {
-          success: true,
-          suppressed: true,
-          to: request_body[:to],
-          reason: "User has opted out of email notifications"
-        }.to_json
-      end
-
-      # Render template if provided
-      subject, body = render_email(request_body)
-
-      # Send email
-      send_email(
-        to: request_body[:to],
-        subject: subject,
-        body: body,
-        from: request_body[:from] || default_from_address,
-        cc: request_body[:cc],
-        bcc: request_body[:bcc],
-        reply_to: request_body[:reply_to]
-      )
-
-      # Increment rate limit counter
-      increment_rate_limit!
-
-      status 200
-      {
-        success: true,
-        to: request_body[:to],
-        subject: subject,
-        sent_at: Time.now.utc.iso8601
-      }.to_json
-
-    rescue JSON::ParserError => e
-      logger.error "Invalid JSON: #{e.message}"
-      status 400
-      { success: false, error: "Invalid JSON in request body" }.to_json
-
-    rescue ValidationError, TemplateError, RateLimitError => e
-      logger.error "Error: #{e.message}"
-      status 400
-      { success: false, error: e.message }.to_json
-
-    rescue StandardError => e
-      logger.error "SMTP error: #{e.message}"
-      logger.error e.backtrace.join("\n")
-      status 502
-      {
-        success: false,
-        error: "Email delivery error: #{e.message}"
-      }.to_json
-    end
-  end
-
-  # Queue email for digest delivery
-  post "/digest/queue" do
-    content_type :json
-
-    begin
-      request_body = JSON.parse(request.body.read, symbolize_names: true)
-      validate_email_request!(request_body)
-
-      recipient = request_body[:to]
-      settings.digest_queue[recipient] ||= []
-      settings.digest_queue[recipient] << {
-        template: request_body[:template],
-        context: request_body[:context],
-        queued_at: Time.now.utc
-      }
-
-      status 200
-      {
-        success: true,
-        to: recipient,
-        queued_count: settings.digest_queue[recipient].length,
-        queued_at: Time.now.utc.iso8601
-      }.to_json
-
-    rescue JSON::ParserError, ValidationError => e
-      status 400
-      { success: false, error: e.message }.to_json
-    end
-  end
-
-  # Send digest emails
-  post "/digest/send" do
-    content_type :json
-
-    begin
-      sent_digests = []
-
-      settings.digest_queue.each do |recipient, emails|
-        next if emails.empty?
-
-        # Render digest template
-        subject = "Kiket Digest - #{emails.length} updates"
-        body = render_digest(emails)
-
-        send_email(
-          to: recipient,
-          subject: subject,
-          body: body,
-          from: default_from_address
-        )
-
-        sent_digests << {
-          to: recipient,
-          count: emails.length
-        }
-      end
-
-      # Clear digest queue
-      settings.digest_queue.clear
-
-      status 200
-      {
-        success: true,
-        digests_sent: sent_digests.length,
-        sent_at: Time.now.utc.iso8601,
-        digests: sent_digests
-      }.to_json
-
-    rescue StandardError => e
-      logger.error "Digest send error: #{e.message}"
-      status 500
-      { success: false, error: e.message }.to_json
-    end
-  end
-
-  # Update email preferences
-  post "/preferences/update" do
-    content_type :json
-
-    begin
-      request_body = JSON.parse(request.body.read, symbolize_names: true)
-
-      raise ValidationError, "Email address is required" unless request_body[:email]
-
-      email = request_body[:email].downcase.strip
-      settings.email_preferences[email] = {
-        suppressed: request_body[:suppressed] || false,
-        digest_only: request_body[:digest_only] || false,
-        frequency: request_body[:frequency] || "realtime",
-        updated_at: Time.now.utc
-      }
-
-      status 200
-      {
-        success: true,
-        email: email,
-        preferences: settings.email_preferences[email],
-        updated_at: Time.now.utc.iso8601
-      }.to_json
-
-    rescue JSON::ParserError, ValidationError => e
-      status 400
-      { success: false, error: e.message }.to_json
-    end
-  end
-
-  # Check email preferences
-  post "/preferences/check" do
-    content_type :json
-
-    begin
-      request_body = JSON.parse(request.body.read, symbolize_names: true)
-      raise ValidationError, "Email address is required" unless request_body[:email]
-
-      email = request_body[:email].downcase.strip
-      preferences = settings.email_preferences[email] || default_preferences
-
-      status 200
-      {
-        success: true,
-        email: email,
-        preferences: preferences
-      }.to_json
-
-    rescue JSON::ParserError, ValidationError => e
-      status 400
-      { success: false, error: e.message }.to_json
-    end
-  end
-
-  # Validate email template
-  post "/template/validate" do
-    content_type :json
-
-    begin
-      request_body = JSON.parse(request.body.read, symbolize_names: true)
-
-      raise ValidationError, "Template body is required" unless request_body[:template]
-
-      # Try to parse the template
-      Liquid::Template.parse(request_body[:template])
-
-      status 200
-      {
-        success: true,
-        valid: true,
-        message: "Template syntax is valid"
-      }.to_json
-
-    rescue Liquid::SyntaxError => e
-      status 400
-      {
-        success: false,
-        valid: false,
-        error: "Invalid template syntax: #{e.message}"
-      }.to_json
-
-    rescue JSON::ParserError, ValidationError => e
-      status 400
-      { success: false, error: e.message }.to_json
-    end
-  end
-
-  private
-
-  def validate_email_request!(body)
-    raise ValidationError, "Recipient (to) is required" unless body[:to]
-    raise ValidationError, "Invalid email address" unless valid_email?(body[:to])
-
-    if body[:template].nil? && body[:subject].nil?
-      raise ValidationError, "Either template or subject is required"
-    end
-
-    if body[:template].nil? && body[:body].nil?
-      raise ValidationError, "Either template or body is required"
-    end
-  end
-
-  def valid_email?(email)
-    email.to_s.match?(/\A[^@\s]+@[^@\s]+\.[^@\s]+\z/)
-  end
-
-  def render_email(request_body)
-    if request_body[:template]
-      # Use predefined template
-      template_name = request_body[:template].to_sym
-      template = settings.default_templates[template_name]
-
-      raise TemplateError, "Template '#{template_name}' not found" unless template
-
-      context = request_body[:context] || {}
-
-      subject_template = Liquid::Template.parse(template[:subject])
-      body_template = Liquid::Template.parse(template[:body])
-
-      subject = subject_template.render(context.transform_keys(&:to_s))
-      body = body_template.render(context.transform_keys(&:to_s))
-
-      [ subject, body ]
-    else
-      # Use raw subject and body
-      [ request_body[:subject], request_body[:body] ]
-    end
-  end
-
-  def render_digest(emails)
-    digest_template = <<~TEMPLATE
-      You have {{ count }} updates:
-
-      {% for email in emails %}
-      ---
-      {{ email.rendered_body }}
-
-      {% endfor %}
-
-      ---
-      To change your email preferences, visit your settings.
-    TEMPLATE
-
-    template = Liquid::Template.parse(digest_template)
-    template.render({
-      "count" => emails.length,
-      "emails" => emails.map { |e|
-        _, body = render_email(template: e[:template], context: e[:context])
-        { "rendered_body" => body }
-      }
-    })
-  end
-
-  def send_email(to:, subject:, body:, from:, cc: nil, bcc: nil, reply_to: nil)
-    mail = Mail.new do
-      to to
-      from from
-      subject subject
-      body body
-      cc cc if cc
-      bcc bcc if bcc
-      reply_to reply_to if reply_to
-    end
-
-    mail.deliver!
-    logger.info "Email sent to #{to}: #{subject}"
-  end
-
-  def check_rate_limit!
-    state = settings.rate_limit_state
-
-    # Reset if time window expired
-    if Time.now >= state[:reset_at]
-      state[:count] = 0
-      state[:reset_at] = Time.now + 60
-    end
-
-    max_per_minute = ENV.fetch("RATE_LIMIT_PER_MINUTE", "20").to_i
-
-    if state[:count] >= max_per_minute
-      raise RateLimitError, "Rate limit exceeded (#{max_per_minute}/min)"
-    end
-  end
-
-  def increment_rate_limit!
-    settings.rate_limit_state[:count] += 1
-  end
-
-  def suppression_enabled?
-    ENV.fetch("ENABLE_SUPPRESSION", "true") == "true"
-  end
-
-  def is_suppressed?(email)
-    email = email.downcase.strip
-    prefs = settings.email_preferences[email]
-    prefs && prefs[:suppressed]
-  end
-
-  def default_preferences
-    {
-      suppressed: false,
-      digest_only: false,
-      frequency: "realtime"
-    }
-  end
-
-  def smtp_configured?
-    ENV["SMTP_USERNAME"].present? && ENV["SMTP_PASSWORD"].present?
-  end
-
-  def default_from_address
-    base_domain = ENV.fetch("KIKET_BASE_DOMAIN", "kiket.dev")
-    ENV.fetch("EMAIL_FROM", "notifications@#{base_domain}")
-  end
+end
+
+# Run the extension
+if __FILE__ == $PROGRAM_NAME
+  extension = EmailNotificationExtension.new
+
+  Rack::Handler::Puma.run(
+    extension.app,
+    Host: ENV.fetch("HOST", "0.0.0.0"),
+    Port: ENV.fetch("PORT", 8080).to_i,
+    Threads: "0:16"
+  )
 end

@@ -1,6 +1,13 @@
+# Standalone config - don't inherit from parent directories
+inherit_from: []
+
+plugins:
+  - rubocop-rspec
+
 AllCops:
   NewCops: enable
   TargetRubyVersion: 3.4
+  SuggestExtensions: false
 
 Style/Documentation:
   Enabled: false
