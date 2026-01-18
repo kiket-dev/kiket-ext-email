@@ -261,6 +261,75 @@ extension:
         <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee; color: #666; font-size: 12px;">
           <p>Sent via Kiket · <a href="{{ unsubscribe_url }}">Manage preferences</a></p>
         </div>
+  # Setup Wizard - guides users through extension configuration
+  setup:
+    # Step 1: SMTP Credentials
+    - secrets:
+        title: Connect to SMTP Server
+        description: Enter your SMTP server credentials for sending emails
+        required: true
+        scope: extension
+        help_url: https://docs.kiket.dev/extensions/email#smtp-configuration
+        collect:
+          - SMTP_HOST
+          - SMTP_USERNAME
+          - SMTP_PASSWORD
+
+    # Step 2: Email Settings
+    - configure:
+        title: Configure Email Settings
+        description: Set up email delivery options
+        scope: extension
+        fields:
+          - key: SMTP_PORT
+            type: number
+            label: SMTP Port
+            description: SMTP server port (usually 587 for TLS, 465 for SSL)
+            default: 587
+          - key: EMAIL_FROM
+            type: text
+            label: From Address
+            description: Default sender email address
+            placeholder: "notifications@yourdomain.com"
+          - key: SMTP_TLS
+            type: checkbox
+            label: Enable TLS
+            description: Use STARTTLS for secure connection
+            default: true
+
+    # Step 3: Test Connection
+    - test:
+        title: Test Email Delivery
+        description: Send a test email to verify your SMTP configuration
+        action: email.validateSmtp
+        successMessage: Successfully connected to SMTP server! A test email was sent.
+        required: false
+
+    # Step 4: Getting Started Info
+    - info:
+        title: Setup Complete
+        content: |
+          ## You're all set!
+
+          Your email integration is now configured. Here's what happens next:
+
+          - **Issue notifications** will be sent via your SMTP server
+          - **SLA breach alerts** will notify your team immediately
+          - You can customize email templates in Extension Settings
+
+          ### Tips
+
+          - Customize email templates for your brand
+          - Enable digest mode to reduce email volume
+          - Use user preferences to honor opt-out requests
+        links:
+          - label: Email Templates Guide
+            url: https://docs.kiket.dev/extensions/email#templates
+            icon: book
+          - label: SMTP Troubleshooting
+            url: https://docs.kiket.dev/extensions/email#troubleshooting
+            icon: question-circle
+
   custom_data:
     permissions:
       - module: dev.kiket.ext.email.deliveries
