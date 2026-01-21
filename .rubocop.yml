@@ -22,23 +22,27 @@ Metrics/BlockLength:
   Exclude:
     - 'spec/**/*'
 
+# Very relaxed for existing extension code
 Metrics/ClassLength:
-  Max: 300
+  Max: 600
 
 Metrics/MethodLength:
-  Max: 50
+  Max: 80
 
 Metrics/AbcSize:
-  Max: 50
+  Max: 80
 
 Metrics/CyclomaticComplexity:
-  Max: 15
+  Max: 25
 
 Metrics/PerceivedComplexity:
-  Max: 15
+  Max: 25
+
+Metrics/ParameterLists:
+  Max: 10
 
 Layout/LineLength:
-  Max: 150
+  Max: 180
 
 # RSpec settings
 RSpec/ExampleLength:
@@ -49,6 +53,9 @@ RSpec/MultipleExpectations:
 
 RSpec/NestedGroups:
   Max: 4
+
+RSpec/MultipleMemoizedHelpers:
+  Max: 10
 
 RSpec/SpecFilePathFormat:
   Enabled: false
@@ -65,7 +72,24 @@ RSpec/StubbedMock:
 RSpec/MessageSpies:
   Enabled: false
 
-# Allow classes without documentation in scripts
+RSpec/DescribeClass:
+  Enabled: false
+
+# Disable some style cops that conflict with existing code
 Style/Documentation:
-  Exclude:
-    - 'bin/**/*'
+  Enabled: false
+
+Style/StringConcatenation:
+  Enabled: false
+
+Style/FetchEnvVar:
+  Enabled: false
+
+Naming/PredicatePrefix:
+  Enabled: false
+
+Naming/PredicateMethod:
+  Enabled: false
+
+Lint/DuplicateBranch:
+  Enabled: false

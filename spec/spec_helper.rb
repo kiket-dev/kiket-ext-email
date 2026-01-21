@@ -1,15 +1,15 @@
 # frozen_string_literal: true
 
-ENV["RACK_ENV"] = "test"
+ENV['RACK_ENV'] = 'test'
 
-require "bundler/setup"
+require 'bundler/setup'
 Bundler.require(:default, :test)
 
-require "rspec"
-require "webmock/rspec"
-require "mail"
-require "liquid"
-require "logger"
+require 'rspec'
+require 'webmock/rspec'
+require 'mail'
+require 'liquid'
+require 'logger'
 
 # Test-only class that includes the handler logic without SDK initialization
 # This allows us to test the business logic in isolation
@@ -30,37 +30,37 @@ class TestEmailHandlers
     validate_email_request!(payload)
     check_rate_limit!
 
-    if suppression_enabled? && is_suppressed?(payload["to"])
+    if suppression_enabled? && is_suppressed?(payload['to'])
       return {
         success: true,
         suppressed: true,
-        to: payload["to"],
-        reason: "User has opted out of email notifications"
+        to: payload['to'],
+        reason: 'User has opted out of email notifications'
       }
     end
 
     subject, body = render_email(payload)
 
     send_email(
-      to: payload["to"],
+      to: payload['to'],
       subject: subject,
       body: body,
-      from: payload["from"] || default_from_address,
-      cc: payload["cc"],
-      bcc: payload["bcc"]
+      from: payload['from'] || default_from_address,
+      cc: payload['cc'],
+      bcc: payload['bcc']
     )
 
     increment_rate_limit!
 
-    context[:endpoints].log_event.call("email.sent", {
-      to: payload["to"],
-      subject: subject,
-      org_id: context[:auth][:org_id]
-    })
+    context[:endpoints].log_event.call('email.sent', {
+                                         to: payload['to'],
+                                         subject: subject,
+                                         org_id: context[:auth][:org_id]
+                                       })
 
     {
       success: true,
-      to: payload["to"],
+      to: payload['to'],
       subject: subject,
       sent_at: Time.now.utc.iso8601
     }
@@ -70,14 +70,14 @@ class TestEmailHandlers
     { success: false, error: "Email delivery error: #{e.message}" }
   end
 
-  def handle_digest_queue(payload, context)
+  def handle_digest_queue(payload, _context)
     validate_email_request!(payload)
 
-    recipient = payload["to"]
+    recipient = payload['to']
     @digest_queue[recipient] ||= []
     @digest_queue[recipient] << {
-      template: payload["template"],
-      context: payload["context"],
+      template: payload['template'],
+      context: payload['context'],
       queued_at: Time.now.utc
     }
 
@@ -91,7 +91,7 @@ class TestEmailHandlers
     { success: false, error: e.message }
   end
 
-  def handle_digest_send(payload, context)
+  def handle_digest_send(_payload, context)
     sent_digests = []
 
     @digest_queue.each do |recipient, emails|
@@ -115,10 +115,10 @@ class TestEmailHandlers
 
     @digest_queue.clear
 
-    context[:endpoints].log_event.call("email.digest.sent", {
-      count: sent_digests.length,
-      org_id: context[:auth][:org_id]
-    })
+    context[:endpoints].log_event.call('email.digest.sent', {
+                                         count: sent_digests.length,
+                                         org_id: context[:auth][:org_id]
+                                       })
 
     {
       success: true,
@@ -130,14 +130,14 @@ class TestEmailHandlers
     { success: false, error: e.message }
   end
 
-  def handle_preferences_update(payload, context)
-    raise ValidationError, "Email address is required" unless payload["email"]
+  def handle_preferences_update(payload, _context)
+    raise ValidationError, 'Email address is required' unless payload['email']
 
-    email = payload["email"].downcase.strip
+    email = payload['email'].downcase.strip
     @email_preferences[email] = {
-      suppressed: payload["suppressed"] || false,
-      digest_only: payload["digest_only"] || false,
-      frequency: payload["frequency"] || "realtime",
+      suppressed: payload['suppressed'] || false,
+      digest_only: payload['digest_only'] || false,
+      frequency: payload['frequency'] || 'realtime',
       updated_at: Time.now.utc
     }
 
@@ -151,10 +151,10 @@ class TestEmailHandlers
     { success: false, error: e.message }
   end
 
-  def handle_preferences_check(payload, context)
-    raise ValidationError, "Email address is required" unless payload["email"]
+  def handle_preferences_check(payload, _context)
+    raise ValidationError, 'Email address is required' unless payload['email']
 
-    email = payload["email"].downcase.strip
+    email = payload['email'].downcase.strip
     preferences = @email_preferences[email] || default_preferences
 
     {
@@ -166,15 +166,15 @@ class TestEmailHandlers
     { success: false, error: e.message }
   end
 
-  def handle_template_validate(payload, context)
-    raise ValidationError, "Template body is required" unless payload["template"]
+  def handle_template_validate(payload, _context)
+    raise ValidationError, 'Template body is required' unless payload['template']
 
-    Liquid::Template.parse(payload["template"])
+    Liquid::Template.parse(payload['template'])
 
     {
       success: true,
       valid: true,
-      message: "Template syntax is valid"
+      message: 'Template syntax is valid'
     }
   rescue Liquid::SyntaxError => e
     {
@@ -189,16 +189,14 @@ class TestEmailHandlers
   private
 
   def validate_email_request!(payload)
-    raise ValidationError, "Recipient (to) is required" unless payload["to"]
-    raise ValidationError, "Invalid email address" unless valid_email?(payload["to"])
+    raise ValidationError, 'Recipient (to) is required' unless payload['to']
+    raise ValidationError, 'Invalid email address' unless valid_email?(payload['to'])
 
-    if payload["template"].nil? && payload["subject"].nil?
-      raise ValidationError, "Either template or subject is required"
-    end
+    raise ValidationError, 'Either template or subject is required' if payload['template'].nil? && payload['subject'].nil?
 
-    if payload["template"].nil? && payload["body"].nil?
-      raise ValidationError, "Either template or body is required"
-    end
+    return unless payload['template'].nil? && payload['body'].nil?
+
+    raise ValidationError, 'Either template or body is required'
   end
 
   def valid_email?(email)
@@ -206,13 +204,13 @@ class TestEmailHandlers
   end
 
   def render_email(payload)
-    if payload["template"]
-      template_name = payload["template"].to_sym
+    if payload['template']
+      template_name = payload['template'].to_sym
       template = default_templates[template_name]
 
       raise TemplateError, "Template '#{template_name}' not found" unless template
 
-      template_context = payload["context"] || {}
+      template_context = payload['context'] || {}
 
       subject_template = Liquid::Template.parse(template[:subject])
       body_template = Liquid::Template.parse(template[:body])
@@ -222,7 +220,7 @@ class TestEmailHandlers
 
       [subject, body]
     else
-      [payload["subject"], payload["body"]]
+      [payload['subject'], payload['body']]
     end
   end
 
@@ -246,12 +244,12 @@ class TestEmailHandlers
 
     template = Liquid::Template.parse(digest_template)
     template.render({
-      "count" => emails.length,
-      "emails" => emails.map { |e|
-        _, body = render_email("template" => e[:template], "context" => e[:context])
-        { "rendered_body" => body }
-      }
-    })
+                      'count' => emails.length,
+                      'emails' => emails.map do |e|
+                        _, body = render_email('template' => e[:template], 'context' => e[:context])
+                        { 'rendered_body' => body }
+                      end
+                    })
   end
 
   def send_email(to:, subject:, body:, from:, cc: nil, bcc: nil)
@@ -273,11 +271,11 @@ class TestEmailHandlers
       @rate_limit_state[:reset_at] = Time.now + 60
     end
 
-    max_per_minute = ENV.fetch("RATE_LIMIT_PER_MINUTE", "20").to_i
+    max_per_minute = ENV.fetch('RATE_LIMIT_PER_MINUTE', '20').to_i
 
-    if @rate_limit_state[:count] >= max_per_minute
-      raise RateLimitError, "Rate limit exceeded (#{max_per_minute}/min)"
-    end
+    return unless @rate_limit_state[:count] >= max_per_minute
+
+    raise RateLimitError, "Rate limit exceeded (#{max_per_minute}/min)"
   end
 
   def increment_rate_limit!
@@ -285,7 +283,7 @@ class TestEmailHandlers
   end
 
   def suppression_enabled?
-    ENV.fetch("ENABLE_SUPPRESSION", "true") == "true"
+    ENV.fetch('ENABLE_SUPPRESSION', 'true') == 'true'
   end
 
   def is_suppressed?(email)
@@ -298,19 +296,19 @@ class TestEmailHandlers
     {
       suppressed: false,
       digest_only: false,
-      frequency: "realtime"
+      frequency: 'realtime'
     }
   end
 
   def default_from_address
-    base_domain = ENV.fetch("KIKET_BASE_DOMAIN", "kiket.dev")
-    ENV.fetch("EMAIL_FROM", "notifications@#{base_domain}")
+    base_domain = ENV.fetch('KIKET_BASE_DOMAIN', 'kiket.dev')
+    ENV.fetch('EMAIL_FROM', "notifications@#{base_domain}")
   end
 
   def default_templates
     {
       issue_created: {
-        subject: "New issue: {{ issue.title }}",
+        subject: 'New issue: {{ issue.title }}',
         body: <<~TEMPLATE
           A new issue has been created:
 
@@ -347,14 +345,14 @@ def build_context(overrides = {})
   events_logged = []
 
   default_secrets = {
-    "SMTP_USERNAME" => "test@example.com",
-    "SMTP_PASSWORD" => "test_password"
+    'SMTP_USERNAME' => 'test@example.com',
+    'SMTP_PASSWORD' => 'test_password'
   }
 
   {
-    auth: { org_id: "test-org-123", user_id: "test-user-456" },
-    secret: ->(key) { default_secrets[key] || ENV[key] },
-    endpoints: double("endpoints", log_event: ->(event, data) { events_logged << { event: event, data: data } }),
+    auth: { org_id: 'test-org-123', user_id: 'test-user-456' },
+    secret: ->(key) { default_secrets[key] || ENV.fetch(key, nil) },
+    endpoints: double('endpoints', log_event: ->(event, data) { events_logged << { event: event, data: data } }),
     events_logged: events_logged
   }.merge(overrides)
 end
@@ -370,14 +368,14 @@ RSpec.configure do |config|
 
   config.shared_context_metadata_behavior = :apply_to_host_groups
   config.filter_run_when_matching :focus
-  config.example_status_persistence_file_path = "spec/examples.txt"
+  config.example_status_persistence_file_path = 'spec/examples.txt'
   config.disable_monkey_patching!
   config.warnings = false # Reduce noise from dependencies
   config.order = :random
   Kernel.srand config.seed
 
   # Clear Mail deliveries before each test
-  config.before(:each) do
+  config.before do
     Mail::TestMailer.deliveries.clear
   end
 
