@@ -93,6 +93,30 @@ extension:
         handler:
           type: extension_event
           event: email.validateTemplate
+    workflow_actions:
+      - id: send_email
+        name: Send Email
+        icon: bi-envelope
+        description: Send an email notification when a workflow state is entered or exited
+        handler:
+          type: extension_event
+          event: email.workflowAction.sendEmail
+        parameters:
+          - key: to
+            type: string
+            label: Recipients
+            placeholder: "user@example.com or {{issue.assignee_email}}"
+            required: true
+          - key: subject
+            type: string
+            label: Subject
+            placeholder: "{{issue.title}} status update"
+            required: true
+          - key: template
+            type: string
+            label: Template
+            placeholder: "e.g. status_update"
+            required: false
   configuration:
     # SMTP Settings - org-wide credentials (shared across all projects)
     SMTP_HOST:
