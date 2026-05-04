@@ -10,8 +10,8 @@ automations:
         command: email.send
         params:
           to:
-            - "{{ issue.assignee.email }}"
+            - "{{ case.assignee.email }}"
             - "{{ project.lead.email }}"
-          subject: "[SLA BREACH] {{ issue.title }} - Action Required"
+          subject: "[SLA BREACH] {{ case.title }} - Action Required"
           template: sla_breach_template
           priority: high

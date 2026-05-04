@@ -15,10 +15,10 @@ extension:
     timeout: 30000
     required: true
   activationEvents:
-    - issue.created
-    - issue.transitioned
-    - issue.assigned
-    - issue.commented
+    - case.created
+    - case.transitioned
+    - case.assigned
+    - case.commented
     - workflow.sla_breach
   permissions:
     - issues:read
@@ -32,21 +32,21 @@ extension:
     - preference-management
     - rate-limiting
   hooks:
-    - event: issue.created
+    - event: case.created
       template: issue_created_template
       timeout: 5000
       retries: 1
       description: Send email notification when issue is created
-    - event: issue.transitioned
+    - event: case.transitioned
       timeout: 5000
       retries: 1
       description: Send email on issue state transitions
-    - event: issue.assigned
+    - event: case.assigned
       template: issue_assigned_template
       timeout: 5000
       retries: 1
       description: Notify users when assigned to issues
-    - event: issue.commented
+    - event: case.commented
       timeout: 5000
       retries: 1
       description: Send email for new comments
@@ -105,12 +105,12 @@ extension:
           - key: to
             type: string
             label: Recipients
-            placeholder: "user@example.com or {{issue.assignee_email}}"
+            placeholder: "user@example.com or {{ case.assignee_email }}"
             required: true
           - key: subject
             type: string
             label: Subject
-            placeholder: "{{issue.title}} status update"
+            placeholder: "{{ case.title }} status update"
             required: true
           - key: template
             type: string
@@ -181,18 +181,18 @@ extension:
       label: Issue Created Email Template
       description: Email template sent when a new issue is created
       default: |
-        <h2>New Issue: {{ issue.title }}</h2>
+        <h2>New Issue: {{ case.title }}</h2>
         <p>Hi {{ user.name }},</p>
         <p>A new issue has been created in <strong>{{ project.name }}</strong>.</p>
         <table style="width:100%; border-collapse: collapse;">
-          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Issue</strong></td><td style="padding: 8px; border: 1px solid #ddd;">{{ issue.title }}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Type</strong></td><td style="padding: 8px; border: 1px solid #ddd;">{{ issue.type }}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Priority</strong></td><td style="padding: 8px; border: 1px solid #ddd;">{{ issue.priority }}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Created by</strong></td><td style="padding: 8px; border: 1px solid #ddd;">{{ issue.created_by.name }}</td></tr>
+          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Issue</strong></td><td style="padding: 8px; border: 1px solid #ddd;">{{ case.title }}</td></tr>
+          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Type</strong></td><td style="padding: 8px; border: 1px solid #ddd;">{{ case.type }}</td></tr>
+          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Priority</strong></td><td style="padding: 8px; border: 1px solid #ddd;">{{ case.priority }}</td></tr>
+          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Created by</strong></td><td style="padding: 8px; border: 1px solid #ddd;">{{ case.created_by.name }}</td></tr>
         </table>
-        <p><a href="{{ issue.url }}" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px;">View Issue</a></p>
+        <p><a href="{{ case.url }}" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px;">View Issue</a></p>
       variables:
-        - name: issue
+        - name: case
           type: object
           properties:
             - { name: id, type: number }
@@ -219,14 +219,14 @@ extension:
       label: Issue Assigned Email Template
       description: Email template sent when an issue is assigned
       default: |
-        <h2>Issue Assigned: {{ issue.title }}</h2>
+        <h2>Issue Assigned: {{ case.title }}</h2>
         <p>Hi {{ assignee.name }},</p>
         <p>You have been assigned to an issue in <strong>{{ project.name }}</strong>.</p>
-        <p><strong>{{ issue.title }}</strong></p>
-        <p>{{ issue.description | truncate: 200 }}</p>
-        <p><a href="{{ issue.url }}">View Issue →</a></p>
+        <p><strong>{{ case.title }}</strong></p>
+        <p>{{ case.description | truncate: 200 }}</p>
+        <p><a href="{{ case.url }}">View Issue →</a></p>
       variables:
-        - name: issue
+        - name: case
           type: object
           properties:
             - { name: id, type: number }
@@ -251,15 +251,15 @@ extension:
       default: |
         <div style="border-left: 4px solid #dc3545; padding-left: 16px;">
           <h2 style="color: #dc3545;">⚠️ SLA Breach Alert</h2>
-          <p><strong>Issue:</strong> {{ issue.title }}</p>
+          <p><strong>Issue:</strong> {{ case.title }}</p>
           <p><strong>SLA Policy:</strong> {{ sla.policy_name }}</p>
           <p><strong>Target:</strong> {{ sla.target_time }}</p>
           <p><strong>Actual:</strong> {{ sla.actual_time }}</p>
           <p><strong>Exceeded by:</strong> {{ sla.exceeded_by }}</p>
-          <p><a href="{{ issue.url }}" style="background-color: #dc3545; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px;">Take Action Now</a></p>
+          <p><a href="{{ case.url }}" style="background-color: #dc3545; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px;">Take Action Now</a></p>
         </div>
       variables:
-        - name: issue
+        - name: case
           type: object
           properties:
             - { name: id, type: number }
@@ -275,7 +275,7 @@ extension:
       validation:
         max_length: 50000
         required_variables:
-          - issue.title
+          - case.title
           - sla.policy_name
     email_signature:
       type: html

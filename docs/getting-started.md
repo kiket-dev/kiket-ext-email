@@ -52,10 +52,10 @@ Templates have access to these variables:
 ### Example Template
 
 ```liquid
-<h2>{{ issue.title }}</h2>
-<p>Priority: {{ issue.priority | default: "Normal" }}</p>
+<h2>{{ case.title }}</h2>
+<p>Priority: {{ case.priority | default: "Normal" }}</p>
 <p>
-  <a href="{{ issue.url }}" style="background: #007bff; color: white; padding: 10px 20px; text-decoration: none;">
+  <a href="{{ case.url }}" style="background: #007bff; color: white; padding: 10px 20px; text-decoration: none;">
     View Issue
   </a>
 </p>
@@ -67,17 +67,17 @@ Templates have access to these variables:
 automations:
   - name: email_on_high_priority
     trigger:
-      event: issue.created
+      event: case.created
       conditions:
-        - field: issue.priority
+        - field: case.priority
           operator: eq
           value: "critical"
     actions:
       - extension: dev.kiket.ext.email
         command: email.send
         params:
-          to: "{{ issue.assignee.email }}"
-          subject: "[URGENT] {{ issue.title }}"
+          to: "{{ case.assignee.email }}"
+          subject: "[URGENT] {{ case.title }}"
           template: sla_breach_template
 ```
 
